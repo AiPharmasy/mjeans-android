@@ -85,23 +85,43 @@ jobs:
           echo "Version name: $VERSION_NAME"
           echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
 
-      # ── Bump versionCode (always for tag push; only if requested for manual) ──
-      - name: Bump versionCode
+      # ── Compute versionCode ────────────────────────────────────────────
+      # For tag push: versionCode is derived from the version name (e.g. "1.9" → 109, "2.0" → 200)
+      # For manual run with bump_version_code=true: increment the current versionCode by 1
+      # For manual run without bump: use the current versionCode
+      - name: Compute versionCode
+        id: vcode
         env:
           BUMP: ${{ github.event.inputs.bump_version_code }}
           REF: ${{ github.ref }}
+          VERSION_NAME: ${{ steps.ver.outputs.version_name }}
         run: |
-          # Bump if: tag push (always) OR manual run with bump_version_code=true
-          if [[ "$REF" == refs/tags/v* ]] || [ "$BUMP" = "true" ]; then
+          if [[ "$REF" == refs/tags/v* ]]; then
+            # Tag push: derive versionCode from version name
+            # "1.9"   → 109
+            # "1.10"  → 110
+            # "2.0"   → 200
+            # "10.5"  → 1005
+            # Strip any non-numeric chars (just in case)
+            CLEAN=$(echo "$VERSION_NAME" | sed 's/[^0-9.]//g')
+            MAJOR=$(echo "$CLEAN" | cut -d. -f1)
+            MINOR=$(echo "$CLEAN" | cut -d. -f2)
+            [ -z "$MINOR" ] && MINOR=0
+            # versionCode = major * 100 + minor (supports up to minor=99)
+            NEW=$((MAJOR * 100 + MINOR))
+            echo "Derived versionCode from $VERSION_NAME: $NEW"
+            sed -i "s/versionCode [0-9]*/versionCode $NEW/" app/build.gradle
+            echo "version_code=$NEW" >> $GITHUB_OUTPUT
+          elif [ "$BUMP" = "true" ]; then
             CURRENT=$(grep 'versionCode' app/build.gradle | head -1 | grep -oE '[0-9]+')
             NEW=$((CURRENT + 1))
             echo "Bumping versionCode: $CURRENT → $NEW"
             sed -i "s/versionCode [0-9]*/versionCode $NEW/" app/build.gradle
-            echo "NEW_VERSION_CODE=$NEW" >> $GITHUB_ENV
+            echo "version_code=$NEW" >> $GITHUB_OUTPUT
           else
             CURRENT=$(grep 'versionCode' app/build.gradle | head -1 | grep -oE '[0-9]+')
-            echo "NEW_VERSION_CODE=$CURRENT" >> $GITHUB_ENV
-            echo "Not bumping versionCode (manual run, bump_version_code=false)"
+            echo "Not bumping versionCode (manual run, bump_version_code=false): $CURRENT"
+            echo "version_code=$CURRENT" >> $GITHUB_OUTPUT
           fi
 
       - name: Override versionName
@@ -119,6 +139,11 @@ jobs:
           echo "version_code=$VC" >> $GITHUB_OUTPUT
           echo "version_name=$VN" >> $GITHUB_OUTPUT
           echo "Final version: $VN (versionCode $VC)"
+          # Sanity: versionCode must be at least 1
+          if [ "$VC" -lt 1 ]; then
+            echo "::error::Invalid versionCode: $VC"
+            exit 1
+          fi
 
       # ── Build the signed release APK ───────────────────────────────────
       - name: Build release APK
