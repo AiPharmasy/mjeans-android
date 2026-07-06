@@ -5,7 +5,7 @@ name: Build & Release APK
 #   - Manually triggered from the Actions tab (workflow_dispatch)
 # The resulting APK is uploaded to a GitHub Release.
 
-on:
+"on":
   push:
     tags:
       - 'v*'           # any tag starting with "v", e.g. v1.6, v2.0
