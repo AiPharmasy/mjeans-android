@@ -1,0 +1,10 @@
+# Example gradle.properties for local development
+# Copy this file to ~/.gradle/gradle.properties (NOT to the project root)
+# and fill in your local values.
+#
+# Alternatively, set environment variables MJEA_NS_STORE_PASSWORD,
+# MJEA_NS_KEY_ALIAS, MJEA_NS_KEY_PASSWORD.
+
+MJEA_NS_STORE_PASSWORD=Mj@ns#2026!Key
+MJEA_NS_KEY_ALIAS=mjeans
+MJEA_NS_KEY_PASSWORD=Mj@ns#2026!Key

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">مرسدس</string>
+    <string name="loading_text">در حال بارگذاری…</string>
+    <string name="no_internet_title">اتصال اینترنت برقرار نیست</string>
+    <string name="no_internet_message">لطفاً به اینترنت متصل شوید و دوباره تلاش کنید.</string>
+    <string name="retry_button">تلاش مجدد</string>
+</resources>
