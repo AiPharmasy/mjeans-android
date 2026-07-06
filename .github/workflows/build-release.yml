@@ -197,12 +197,24 @@ jobs:
       # ── Also generate assetlinks.json with the current fingerprint ─────
       - name: Generate assetlinks.json
         run: |
-          # Extract the actual SHA-256 from the built APK
-          SHA=$($ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs \
+          # Extract the actual SHA-256 from the built APK (lowercase, no colons)
+          RAW_SHA=$($ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs \
                   app/build/outputs/apk/release/app-release.apk \
-                  | grep "SHA-256" | head -1 | grep -oE '[A-F0-9:]{64,}' | head -1)
-          echo "Using SHA-256: $SHA"
-          cat > assetlinks.json <<EOF
+                  | grep "SHA-256" | head -1 | grep -oE '[a-fA-F0-9]{64}' | head -1)
+          echo "Raw SHA-256 (lowercase, no colons): $RAW_SHA"
+
+          # Format as uppercase with colons (standard Android format)
+          # e.g. b794027e... → B7:94:02:7E:...
+          SHA=$(echo "$RAW_SHA" | tr 'a-f' 'A-F' | sed 's/\(..\)/\1:/g;s/:$//')
+          echo "Formatted SHA-256: $SHA"
+
+          if [ -z "$SHA" ]; then
+            echo "::error::Failed to extract SHA-256 from APK"
+            exit 1
+          fi
+
+          # Write assetlinks.json with NO leading indentation (heredoc with <<'JSON')
+          cat > assetlinks.json <<JSON
           [
             {
               "relation": ["delegate_permission/common.handle_all_urls"],
@@ -215,8 +227,16 @@ jobs:
               }
             }
           ]
-          EOF
+          JSON
+
+          # Strip leading whitespace from each line (the heredoc above preserves indentation)
+          # to ensure clean JSON output
+          sed -i 's/^[[:space:]]*//' assetlinks.json
+          echo "=== assetlinks.json ==="
           cat assetlinks.json
+          echo ""
+          echo "=== Validating JSON ==="
+          python3 -m json.tool assetlinks.json > /dev/null && echo "✅ Valid JSON" || (echo "::error::Invalid JSON"; exit 1)
 
       # ── Create GitHub Release ──────────────────────────────────────────
       - name: Create GitHub Release
