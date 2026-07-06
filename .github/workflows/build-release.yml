@@ -1,8 +1,8 @@
 name: Build & Release APK
 
 # This workflow builds a signed release APK whenever:
-#   - A tag like v1.6, v2.0, etc. is pushed
-#   - Manually triggered from the Actions tab (workflow_dispatch)
+#   - A tag like v1.6, v2.0, etc. is pushed → uses the version from the tag name
+#   - Manually triggered from the Actions tab → uses provided version or bumps versionCode
 # The resulting APK is uploaded to a GitHub Release.
 
 "on":
@@ -48,8 +48,6 @@ jobs:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       # ── Decode keystore from secret ────────────────────────────────────
-      # The keystore file is stored as base64 in the MJEA_NS_KEYSTORE_BASE64 secret.
-      # We decode it and write to a path the build.gradle can reference.
       - name: Decode keystore
         env:
           MJEA_NS_KEYSTORE_BASE64: ${{ secrets.MJEA_NS_KEYSTORE_BASE64 }}
@@ -63,24 +61,54 @@ jobs:
           fi
           echo "Keystore size: $(stat -c%s keystore/mjeans-release.keystore) bytes"
 
-      # ── (Optional) Bump version ────────────────────────────────────────
-      - name: Bump versionCode (if requested)
-        if: ${{ github.event.inputs.bump_version_code == 'true' }}
-        run: |
-          # Read current versionCode, increment, write back
-          CURRENT=$(grep 'versionCode' app/build.gradle | head -1 | grep -oE '[0-9]+')
-          NEW=$((CURRENT + 1))
-          echo "Bumping versionCode: $CURRENT → $NEW"
-          sed -i "s/versionCode [0-9]*/versionCode $NEW/" app/build.gradle
-          echo "NEW_VERSION_CODE=$NEW" >> $GITHUB_ENV
-
-      - name: Override versionName (if provided)
-        if: ${{ github.event.inputs.version_name != '' }}
+      # ── Compute version name ───────────────────────────────────────────
+      # For tag push:  version comes from the tag (e.g. v1.6 → 1.6)
+      # For manual run: version comes from inputs.version_name (or fallback to current build.gradle value)
+      - name: Compute version name
+        id: ver
         env:
-          NEW_NAME: ${{ github.event.inputs.version_name }}
+          REF: ${{ github.ref }}
+          INPUT_VERSION: ${{ github.event.inputs.version_name }}
+        run: |
+          if [[ "$REF" == refs/tags/v* ]]; then
+            # Tag push: extract version from tag (strip leading "v")
+            VERSION_NAME="${REF#refs/tags/v}"
+            echo "Source: tag push"
+          elif [ -n "$INPUT_VERSION" ]; then
+            VERSION_NAME="$INPUT_VERSION"
+            echo "Source: workflow_dispatch input"
+          else
+            # Fallback: use current value in build.gradle
+            VERSION_NAME=$(grep 'versionName' app/build.gradle | head -1 | sed -E 's/.*versionName "([^"]+)".*/\1/')
+            echo "Source: build.gradle (no input provided)"
+          fi
+          echo "Version name: $VERSION_NAME"
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+
+      # ── Bump versionCode (always for tag push; only if requested for manual) ──
+      - name: Bump versionCode
+        env:
+          BUMP: ${{ github.event.inputs.bump_version_code }}
+          REF: ${{ github.ref }}
+        run: |
+          # Bump if: tag push (always) OR manual run with bump_version_code=true
+          if [[ "$REF" == refs/tags/v* ]] || [ "$BUMP" = "true" ]; then
+            CURRENT=$(grep 'versionCode' app/build.gradle | head -1 | grep -oE '[0-9]+')
+            NEW=$((CURRENT + 1))
+            echo "Bumping versionCode: $CURRENT → $NEW"
+            sed -i "s/versionCode [0-9]*/versionCode $NEW/" app/build.gradle
+            echo "NEW_VERSION_CODE=$NEW" >> $GITHUB_ENV
+          else
+            CURRENT=$(grep 'versionCode' app/build.gradle | head -1 | grep -oE '[0-9]+')
+            echo "NEW_VERSION_CODE=$CURRENT" >> $GITHUB_ENV
+            echo "Not bumping versionCode (manual run, bump_version_code=false)"
+          fi
+
+      - name: Override versionName
+        env:
+          NEW_NAME: ${{ steps.ver.outputs.version_name }}
         run: |
           echo "Setting versionName to: $NEW_NAME"
-          # Replace versionName "x.y" line
           sed -i "s|versionName \".*\"|versionName \"$NEW_NAME\"|" app/build.gradle
 
       - name: Read final version info
@@ -203,7 +231,6 @@ jobs:
             ```
             https://mjeans.ir/.well-known/assetlinks.json
             ```
-            See `docs/assetlinks-setup-guide.md` in the uploadZContent repo for full instructions.
 
             ## 📝 Changelog
 
