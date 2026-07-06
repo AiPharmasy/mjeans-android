@@ -16,10 +16,13 @@ android {
 
     signingConfigs {
         release {
-            storeFile file(RELEASE_STORE_FILE)
-            storePassword RELEASE_STORE_PASSWORD
-            keyAlias RELEASE_KEY_ALIAS
-            keyPassword RELEASE_KEY_PASSWORD
+            // Read signing credentials from environment variables.
+            // Fallback to gradle.properties values (if present) for local dev.
+            // The CI workflow sets these env vars from GitHub Secrets.
+            storeFile file(System.env.MJEA_NS_STORE_FILE ?: project.findProperty('RELEASE_STORE_FILE') ?: '../keystore/mjeans-release.keystore')
+            storePassword System.env.MJEA_NS_STORE_PASSWORD ?: project.findProperty('RELEASE_STORE_PASSWORD') ?: ''
+            keyAlias System.env.MJEA_NS_KEY_ALIAS ?: project.findProperty('RELEASE_KEY_ALIAS') ?: ''
+            keyPassword System.env.MJEA_NS_KEY_PASSWORD ?: project.findProperty('RELEASE_KEY_PASSWORD') ?: ''
         }
     }
 
